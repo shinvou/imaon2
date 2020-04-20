@@ -10,3 +10,4 @@ externals/rust-bindgen/bindgen
 externals/rust-bindgen/bindgen.dSYM
 tables/llvm-tblgen
 target
+llvm*
