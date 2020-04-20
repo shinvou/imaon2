@@ -928,7 +928,7 @@ impl<T: Swap> Mem<T> {
 }
 
 pub fn memmap(fil: &File) -> io::Result<Mem<u8>> {
-    Ok(Mem::with_mm(try!(Mmap::open(fil, memmap::Protection::ReadCopy))))
+    Ok(Mem::with_mm(Mmap::open(fil, memmap::Protection::ReadCopy)?))
 }
 
 pub fn do_getopts(args: &[String], min_expected_free: usize, max_expected_free: usize, optgrps: &mut Vec<getopts::OptGroup>) -> Option<getopts::Matches> {
@@ -1449,7 +1449,7 @@ impl Debug for BitSet32 {
 }
 impl Display for BitSet32 {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        try!(write!(f, "{{"));
+        write!(f, "{{")?;
         let mut first = true;
         for bit in self.set_bits() {
             try!(write!(f, "{}{}",
