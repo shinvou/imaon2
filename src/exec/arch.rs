@@ -110,12 +110,12 @@ impl ArchAndOptions {
     }
     pub fn new(args: &[String]) -> Result<ArchAndOptions, String> {
         if args.len() == 0 { return Err("empty args".to_owned()); }
-        let arch = try!(Arch::from_str(&*args[0]).map_err(|()| "unknown arch"));
+        let arch = Arch::from_str(&*args[0]).map_err(|()| "unknown arch")?;
         match arch {
             ARM => {
-                let m = try!(util::do_getopts_or_usage(&args[1..], &*args[0], 0,0, &mut vec![
+                let m = util::do_getopts_or_usage(&args[1..], &*args[0], 0,0, &mut vec![
                     getopts::optopt("E", "endian", "Endian", "little/big/L/B"),
-                ]));
+                ])?;
                 let endian_str = m.opt_str("endian");
                 let endian_str = if let Some(ref s) = endian_str { Some(&**s) } else { None }; // XXX wtf
                 let endian = match endian_str {
@@ -168,13 +168,13 @@ impl CodeMode {
     pub fn new(arch: &ArchAndOptions, args: &[String]) -> Result<CodeMode, String> {
         match arch {
             &ArchAndOptions::ARM(..) => {
-                let m = try!(util::do_getopts_or_usage(&args, "[--thumb]", 0, 0, &mut vec![
+                let m = util::do_getopts_or_usage(&args, "[--thumb]", 0, 0, &mut vec![
                     getopts::optflag("t", "thumb", "Thumb"),
-                ]));
+                ])?;
                 Ok(CodeMode::ARMMode { thumb: m.opt_present("thumb") })
             },
             _ => {
-                let _ = try!(util::do_getopts_or_usage(&args, "[no options]", 0, 0, &mut vec![]));
+                let _ = util::do_getopts_or_usage(&args, "[no options]", 0, 0, &mut vec![])?;
                 Ok(CodeMode::OtherMode)
             },
         }

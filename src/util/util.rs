@@ -7,7 +7,7 @@ use memmap::Mmap;
 #[macro_use]
 extern crate macros;
 
-use std::mem::{size_of, uninitialized, transmute, transmute_copy, replace, forget};
+use std::mem::{size_of, MaybeUninit, transmute, transmute_copy, replace, forget};
 use std::ptr;
 use std::ptr::copy;
 use std::sync::{Arc, Mutex};
@@ -125,7 +125,7 @@ impl_rwsp!(T, &'a mut [T]);
 pub fn copy_from_slice<'a, T: Copy + Swap, S: ?Sized + ROSlicePtr<u8>>(slice: &S, end: Endian) -> T {
     assert_eq!(slice.len(), size_of::<T>());
     unsafe {
-        let mut t : T = uninitialized();
+        let mut t : T = MaybeUninit::uninit().assume_init();
         copy(transmute(slice.as_ptr()), &mut t, 1);
         t.bswap_from(end);
         t
@@ -770,14 +770,14 @@ impl PartialEq<str> for ByteString {
 
 #[inline]
 pub fn from_cstr<'a, X: X8, S: ?Sized + ROSlicePtr<X>>(chs: &S) -> &'a ByteStr {
-    let (ptr, len) = (chs.as_ptr() as *const u8, chs.len());;
+    let (ptr, len) = (chs.as_ptr() as *const u8, chs.len());
     let true_len = unsafe { strnlen(ptr, len) };
     unsafe { ByteStr::from_bytes(std::slice::from_raw_parts(ptr, true_len)) }
 }
 
 #[inline]
 pub fn from_cstr_strict<'a, X: X8, S: ?Sized + ROSlicePtr<X>>(chs: &S) -> Option<&'a ByteStr> {
-    let (ptr, len) = (chs.as_ptr() as *const u8, chs.len());;
+    let (ptr, len) = (chs.as_ptr() as *const u8, chs.len());
     let true_len = unsafe { strnlen(ptr, len) };
     if true_len == len {
         None
@@ -961,7 +961,7 @@ fn isprint(c: char) -> bool {
 
 fn shell_safe(c: char) -> bool {
     match c {
-        'a' ... 'z' | 'A' ... 'Z' | '0' ... '9' |
+        'a' ..= 'z' | 'A' ..= 'Z' | '0' ..= '9' |
         '_' | '\\' | '.' | '@' | '/' | '+' | '-'
           => true,
         _ => false
@@ -1146,7 +1146,7 @@ impl<T> Lazy<T> {
     pub fn new() -> Lazy<T> {
         Lazy {
             mtx: Mutex::new(()),
-            val: unsafe { UnsafeCell::new(NoDrop::new(uninitialized())) },
+            val: unsafe { UnsafeCell::new(MaybeUninit::uninit().assume_init()) },
             is_valid: AtomicBool::new(false),
         }
     }
@@ -1336,7 +1336,7 @@ pub fn subset_sorted_list<T, F, G>(list: &[T], mut ge_start: F, mut le_end: G) -
 pub unsafe trait Zeroable: Sized {
     fn zeroed() -> Self {
         unsafe {
-            let mut buf: Self = uninitialized();
+            let mut buf: Self = MaybeUninit::uninit().assume_init();
             memset(&mut buf as *mut Self as *mut u8, 0, size_of::<Self>());
             buf
         }
@@ -1452,9 +1452,9 @@ impl Display for BitSet32 {
         write!(f, "{{")?;
         let mut first = true;
         for bit in self.set_bits() {
-            try!(write!(f, "{}{}",
+            write!(f, "{}{}",
                         if first { "" } else { ", " },
-                        bit));
+                        bit)?;
             first = false;
         }
         write!(f, "}}")

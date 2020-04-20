@@ -74,8 +74,8 @@ impl SlideInfo {
             util::copy_from_slice(&slice[..4], end)
         };
         match slide_info_version {
-            1 => Ok(SlideInfo::V1(try!(SlideInfoV1::new(blob, end, data_addr, data_size)))),
-            2 => Ok(SlideInfo::V2(try!(SlideInfoV2::new(blob, end, is64)))),
+            1 => Ok(SlideInfo::V1(SlideInfoV1::new(blob, end, data_addr, data_size)?)),
+            2 => Ok(SlideInfo::V2(SlideInfoV2::new(blob, end, is64)?)),
             _ => err(BadData, format!("unknown dyld slide info version {}", slide_info_version)),
         }
     }
@@ -363,10 +363,10 @@ trait RangeCast {
     fn range_cast(self) -> Range<usize>;
 }
 impl RangeCast for Range<u32> {
-    fn range_cast(self) -> Range<usize> { (self.start as usize..self.end as usize) }
+    fn range_cast(self) -> Range<usize> { self.start as usize..self.end as usize }
 }
 impl RangeCast for Range<u64> {
-    fn range_cast(self) -> Range<usize> { (self.start as usize..self.end as usize) }
+    fn range_cast(self) -> Range<usize> { self.start as usize..self.end as usize }
 }
 
 pub enum SlideMode {
@@ -554,15 +554,15 @@ impl DyldCache {
             return err(BadData,
                        "shared cache image said to be at an unmapped offset"));
         let buf = self.eb.whole_buf.as_ref().unwrap().clone();
-        let mut mo = try!(MachO::new(buf, true, Some(MachODCInfo {
+        let mut mo = MachO::new(buf, true, Some(MachODCInfo {
             hdr_offset: off as usize,
             have_images_text_offset: self.have_images_text_offset,
-        })));
+        }))?;
         mo.dsc_tabs = self.get_ls_entry_for_offset(off);
         if fix_data {
             let _sw2 = util::stopwatch("DyldCache::load_single_image fix_data");
             for seg in &mo.eb.segments {
-                try!(self.fix_data(Some((seg.vmaddr, seg.vmsize))));
+                self.fix_data(Some((seg.vmaddr, seg.vmsize)))?;
             }
         }
         Ok(mo)
@@ -572,7 +572,7 @@ impl DyldCache {
             return err(BadData, "no data segment");
         });
         let (data_addr, data_size) = (data_seg.vmaddr, data_seg.vmsize);
-        Ok(Some(try!(SlideInfo::new(blob, self.eb.endian, self.eb.pointer_size == 8, data_addr, data_size))))
+        Ok(Some(SlideInfo::new(blob, self.eb.endian, self.eb.pointer_size == 8, data_addr, data_size)?))
     }
     pub fn auto_unslide(&mut self) {
         let slide = {
@@ -686,7 +686,7 @@ impl Exec for DyldCache {
     fn get_exec_base<'a>(&'a self) -> &'a ExecBase {
         &self.eb
     }
-    fn get_reloc_list<'a>(&'a self, specific: Option<&'a Any>) -> Vec<Reloc<'a>> {
+    fn get_reloc_list<'a>(&'a self, specific: Option<&'a dyn Any>) -> Vec<Reloc<'a>> {
         assert!(specific.is_none());
         match self.slide_info {
             Some(SlideInfo::V1(ref v1)) => {
@@ -706,7 +706,7 @@ impl Exec for DyldCache {
         }
     }
 
-    fn as_any(&self) -> &Any { self as &Any }
+    fn as_any(&self) -> &dyn Any { self as &dyn Any }
 }
 
 
@@ -716,7 +716,7 @@ impl ExecProber for DyldWholeProber {
     fn name(&self) -> &str {
         "dyld-whole"
     }
-    fn probe(&self, _eps: &Vec<&'static ExecProber>, buf: Mem<u8>) -> Vec<ProbeResult> {
+    fn probe(&self, _eps: &Vec<&'static dyn ExecProber>, buf: Mem<u8>) -> Vec<ProbeResult> {
         if let Ok(c) = DyldCache::new(buf, false, false) {
             vec![ProbeResult {
                 desc: "whole dyld cache".to_string(),
@@ -728,17 +728,17 @@ impl ExecProber for DyldWholeProber {
             vec!()
         }
     }
-   fn create(&self, _eps: &Vec<&'static ExecProber>, buf: Mem<u8>, args: Vec<String>) -> ExecResult<(Box<Exec>, Vec<String>)> {
-        let m = try!(exec::usage_to_invalid_args(util::do_getopts_or_usage(&*args, "dyld-whole", 0, std::usize::MAX, &mut vec![
+   fn create(&self, _eps: &Vec<&'static dyn ExecProber>, buf: Mem<u8>, args: Vec<String>) -> ExecResult<(Box<dyn Exec>, Vec<String>)> {
+        let m = exec::usage_to_invalid_args(util::do_getopts_or_usage(&*args, "dyld-whole", 0, std::usize::MAX, &mut vec![
             ::getopts::optflag("", "inner-sects", "show sections from inner libraries"),
-        ])));
+        ]))?;
         let inner_sects = m.opt_present("inner-sects");
-        let dc = try!(DyldCache::new(buf, inner_sects, /*unslide*/ true));
+        let dc = DyldCache::new(buf, inner_sects, /*unslide*/ true)?;
         {
             let _sw = util::stopwatch("dyld-whole fix_data");
-            try!(dc.fix_data(None));
+            dc.fix_data(None)?;
         }
-        Ok((Box::new(dc) as Box<Exec>, m.free))
+        Ok((Box::new(dc) as Box<dyn Exec>, m.free))
     }
 }
 
@@ -748,7 +748,7 @@ impl ExecProber for DyldSingleProber {
     fn name(&self) -> &str {
         "dyld-single"
     }
-    fn probe(&self, _eps: &Vec<&'static ExecProber>, buf: Mem<u8>) -> Vec<ProbeResult> {
+    fn probe(&self, _eps: &Vec<&'static dyn ExecProber>, buf: Mem<u8>) -> Vec<ProbeResult> {
         if let Ok(c) = DyldCache::new(buf, false, false) {
             let mut seen_basenames = HashSet::new();
             c.image_info.iter().enumerate().map(|(i, ii)| {
@@ -771,11 +771,11 @@ impl ExecProber for DyldSingleProber {
             vec!()
         }
     }
-   fn create(&self, _eps: &Vec<&'static ExecProber>, buf: Mem<u8>, args: Vec<String>) -> ExecResult<(Box<Exec>, Vec<String>)> {
-        let m = try!(exec::usage_to_invalid_args(util::do_getopts_or_usage(&*args, "dyld-single [--idx] <basename or full path to lib>", 1, std::usize::MAX, &mut vec![
+   fn create(&self, _eps: &Vec<&'static dyn ExecProber>, buf: Mem<u8>, args: Vec<String>) -> ExecResult<(Box<dyn Exec>, Vec<String>)> {
+        let m = exec::usage_to_invalid_args(util::do_getopts_or_usage(&*args, "dyld-single [--idx] <basename or full path to lib>", 1, std::usize::MAX, &mut vec![
             ::getopts::optflag("i", "idx", "choose by idx"),
-        ])));
-        let c = try!(DyldCache::new(buf, false, /*unslide*/ true));
+        ]))?;
+        let c = DyldCache::new(buf, false, /*unslide*/ true)?;
         let mut free = m.free.clone();
         let path = &free.remove(0)[..];
         let bpath = ByteStr::from_str(path);
@@ -789,8 +789,8 @@ impl ExecProber for DyldSingleProber {
             });
             if let Some(i) = o { i } else { return err(ErrorKind::Other, "no such file in shared cache") }
         };
-        let mo = try!(c.load_single_image(&c.image_info[idx], /*fix_data*/ true));
-        Ok((Box::new(mo) as Box<Exec>, free))
+        let mo = c.load_single_image(&c.image_info[idx], /*fix_data*/ true)?;
+        Ok((Box::new(mo) as Box<dyn Exec>, free))
     }
 }
 
@@ -798,12 +798,12 @@ pub struct ImageCache {
     pub seg_map: Vec<SegMapEntry>,
     pub cache: Vec<ImageCacheEntry>,
     pub path_map: HashMap<ByteString, usize, Fnv>,
-    pub known_addrs: Lazy<Box<Any+Send>>, // see macho_dsc_extraction
+    pub known_addrs: Lazy<Box<dyn Any+Send>>, // see macho_dsc_extraction
 }
 
 pub struct ImageCacheEntry {
     pub mo: ExecResult<MachO>,
-    pub addr_syms: Lazy<Box<Any+Send>>, // see macho_dsc_extraction
+    pub addr_syms: Lazy<Box<dyn Any+Send>>, // see macho_dsc_extraction
 }
 
 pub struct SegMapEntry {

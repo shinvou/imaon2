@@ -249,7 +249,7 @@ pub fn copy_nlist_to_vec(vec: &mut Vec<u8>, nl: &x_nlist_64, end: Endian, is64: 
 }
 
 
-pub fn exec_sym_to_nlist_64(sym: &Symbol, strx: u32, ind_strx: Option<u32>, arch: arch::Arch, is_text: &mut FnMut() -> bool, for_obj: bool) -> Result<x_nlist_64, String> {
+pub fn exec_sym_to_nlist_64(sym: &Symbol, strx: u32, ind_strx: Option<u32>, arch: arch::Arch, is_text: &mut dyn FnMut() -> bool, for_obj: bool) -> Result<x_nlist_64, String> {
     // some stuff is missing, like common symbols
     let mut res: x_nlist_64 = Default::default();
     if sym.is_weak {
@@ -494,7 +494,7 @@ impl exec::Exec for MachO {
         &self.eb
     }
 
-    fn get_symbol_list<'a>(&'a self, source: SymbolSource, specific: Option<&Any>) -> Vec<Symbol<'a>> {
+    fn get_symbol_list<'a>(&'a self, source: SymbolSource, specific: Option<&dyn Any>) -> Vec<Symbol<'a>> {
         let _sw = stopwatch("get_symbol_list");
         assert!(specific.is_none());
         match source {
@@ -529,7 +529,7 @@ impl exec::Exec for MachO {
             SymbolSource::Exported => self.get_exported_symbol_list(None),
         }
     }
-    fn lookup_export(&self, name: &ByteStr, specific: Option<&Any>) -> Vec<Symbol> {
+    fn lookup_export(&self, name: &ByteStr, specific: Option<&dyn Any>) -> Vec<Symbol> {
         let mut res = self.get_exported_symbol_list(Some(name));
         if let Some(opts) = specific {
             let opts: &MachOLookupExportOptions = opts.downcast_ref().unwrap();
@@ -577,7 +577,7 @@ impl exec::Exec for MachO {
                 ld.compatibility_version)
     }
 
-    fn as_any(&self) -> &std::any::Any { self as &std::any::Any }
+    fn as_any(&self) -> &dyn std::any::Any { self as &dyn std::any::Any }
 }
 
 fn mach_arch_desc(cputype: i32, cpusubtype: i32) -> Option<&'static str> {
@@ -713,7 +713,7 @@ impl MachO {
         let dc_info = dc_info.unwrap_or(Default::default());
         me.dc_info = dc_info;
         let hdr_offset = dc_info.hdr_offset;
-        let mut lc_off = try!(hdr_offset.checked_add(size_of::<mach_header>()).ok_or_truncated());
+        let mut lc_off = hdr_offset.checked_add(size_of::<mach_header>()).ok_or_truncated()?;
         {
             let buf = mc.get();
             if buf.len() < lc_off { return err(ErrorKind::BadData, "truncated"); }
@@ -1383,13 +1383,13 @@ impl MachO {
         (existing_segs, extra_segs)
     }
 
-    pub fn parse_each_dyld_bind<'a>(&'a self, cb: &mut FnMut(&ParseDyldBindState<'a>) -> bool) {
+    pub fn parse_each_dyld_bind<'a>(&'a self, cb: &mut dyn FnMut(&ParseDyldBindState<'a>) -> bool) {
         self.parse_dyld_bind(self.dyld_bind.get(), WhichBind::Bind, cb);
         self.parse_dyld_bind(self.dyld_weak_bind.get(), WhichBind::WeakBind, cb);
         self.parse_dyld_bind(self.dyld_lazy_bind.get(), WhichBind::LazyBind, cb);
     }
 
-    fn parse_dyld_bind<'a>(&'a self, mut slice: &'a [ReadCell<u8>], which: WhichBind, cb: &mut FnMut(&ParseDyldBindState<'a>) -> bool) {
+    fn parse_dyld_bind<'a>(&'a self, mut slice: &'a [ReadCell<u8>], which: WhichBind, cb: &mut dyn FnMut(&ParseDyldBindState<'a>) -> bool) {
         let pointer_size = self.eb.pointer_size as u64;
         let leb = |slice_: &mut &[ReadCell<u8>], signed| -> Option<u64> {
             let mut it = ByteSliceIterator(slice_);
@@ -1519,7 +1519,7 @@ impl MachO {
             }
         }
     }
-    fn parse_dyld_export<'a>(&'a self, dyld_export: &'a [ReadCell<u8>], search_for: Option<&'a ByteStr>, cb: &mut for<'b> FnMut(&'b ParseDyldExportState<'b>) -> bool) {
+    fn parse_dyld_export<'a>(&'a self, dyld_export: &'a [ReadCell<u8>], search_for: Option<&'a ByteStr>, cb: &mut dyn for<'b> FnMut(&'b ParseDyldExportState<'b>) -> bool) {
         if dyld_export.is_empty() { return; }
         enum State<'x> {
             Search { search_for: &'x ByteStr, sf_offset: usize, offset: usize, count: usize },
@@ -1764,7 +1764,7 @@ impl exec::ExecProber for MachOProber {
     fn name(&self) -> &str {
         "macho"
     }
-    fn probe(&self, _eps: &Vec<&'static exec::ExecProber>, buf: Mem<u8>) -> Vec<exec::ProbeResult> {
+    fn probe(&self, _eps: &Vec<&'static dyn exec::ExecProber>, buf: Mem<u8>) -> Vec<exec::ProbeResult> {
         if let Ok(m) = MachO::new(buf, false, None) {
             vec!(exec::ProbeResult {
                 desc: m.desc(),
@@ -1776,19 +1776,19 @@ impl exec::ExecProber for MachOProber {
             vec!()
         }
     }
-   fn create(&self, _eps: &Vec<&'static exec::ExecProber>, buf: Mem<u8>, args: Vec<String>) -> exec::ExecResult<(Box<exec::Exec>, Vec<String>)> {
-        let m = try!(exec::usage_to_invalid_args(util::do_getopts_or_usage(&*args, "macho ...", 0, std::usize::MAX, &mut vec!(
+   fn create(&self, _eps: &Vec<&'static dyn exec::ExecProber>, buf: Mem<u8>, args: Vec<String>) -> exec::ExecResult<(Box<dyn exec::Exec>, Vec<String>)> {
+        let m = exec::usage_to_invalid_args(util::do_getopts_or_usage(&*args, "macho ...", 0, std::usize::MAX, &mut vec!(
             // ...
-        ))));
-        let mo: MachO = try!(MachO::new(buf, true, None));
-        Ok((Box::new(mo) as Box<exec::Exec>, m.free))
+        )))?;
+        let mo: MachO = MachO::new(buf, true, None)?;
+        Ok((Box::new(mo) as Box<dyn exec::Exec>, m.free))
     }
 }
 
 pub struct FatMachOProber;
 
 impl FatMachOProber {
-    fn probe_cb(&self, mc: &Mem<u8>, cb: &mut FnMut(u64, fat_arch)) -> bool {
+    fn probe_cb(&self, mc: &Mem<u8>, cb: &mut dyn FnMut(u64, fat_arch)) -> bool {
         let buf = mc.get();
         if buf.len() < 8 { return false }
         let fh: fat_header = util::copy_from_slice(&buf[..8], util::BigEndian);
@@ -1840,13 +1840,13 @@ impl exec::ExecProber for FatMachOProber {
         result
     }
 
-    fn create(&self, eps: &Vec<exec::ExecProberRef>, mc: Mem<u8>, args: Vec<String>) -> exec::ExecResult<(Box<exec::Exec>, Vec<String>)> {
+    fn create(&self, eps: &Vec<exec::ExecProberRef>, mc: Mem<u8>, args: Vec<String>) -> exec::ExecResult<(Box<dyn exec::Exec>, Vec<String>)> {
         let top = "fat (--arch ARCH | -s SLICE)";
         let mut optgrps = vec!(
             getopts::optopt("", "arch", "choose by arch (OS X standard names)", "arch"),
             getopts::optopt("s", "slice", "choose by slice number", ""),
         );
-        let mut m = try!(exec::usage_to_invalid_args(util::do_getopts_or_usage(&*args, top, 0, std::usize::MAX, &mut optgrps)));
+        let mut m = exec::usage_to_invalid_args(util::do_getopts_or_usage(&*args, top, 0, std::usize::MAX, &mut optgrps))?;
         let slice_num = m.opt_str("slice");
         let arch = m.opt_str("arch");
         if slice_num.is_some() == arch.is_some() {

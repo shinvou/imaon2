@@ -4,10 +4,9 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::fmt::Write as FmtWrite;
 //use std::time::SystemTime;
-#[macro_use]
 extern crate macros;
 extern crate regex;
-#[macro_use]
+use regex::Regex;
 extern crate lazy_static;
 use std::path::{PathBuf, Path};
 use std::process::{Command, Stdio};
@@ -30,14 +29,14 @@ pub fn do_bind(header_file_name: &str,
         .generate()
         .unwrap()
         .to_string();
-    let bindings = re!(r"(#\[repr\(C\)\]\n#\[derive\()([^\)]*)(\)\]\npub struct )([^ ]*)( \{(?:.|\n)*?\n\})").replace_all(&bindings, |m: &regex::Captures| {
+    let bindings = Regex::new(r"(#\[repr\(C\)\]\n#\[derive\()([^\)]*)(\)\]\npub struct )([^ ]*)( \{(?:.|\n)*?\n\})").unwrap().replace_all(&bindings, |m: &regex::Captures| {
         let mut x = m.at(0).unwrap().to_owned();
         let mut swap_decl = String::new();
-        if !re!(r"\*(const|mut)").is_match(&x) {
+        if !Regex::new(r"\*(const|mut)").unwrap().is_match(&x) {
             x = format!("{}{}{}{}{}", m.at(1).unwrap(), m.at(2).unwrap(), m.at(3).unwrap(), m.at(4).unwrap(), m.at(5).unwrap());
             let struct_name = m.at(4).unwrap();
             swap_decl = format!("impl Swap for {} {{\nfn bswap(&mut self) {{\n", struct_name);
-            for n in re!("pub ([^ ]*):").captures_iter(&x) {
+            for n in Regex::new("pub ([^ ]*):").unwrap().captures_iter(&x) {
                 let name = n.at(1).unwrap();
                 if name == "__opaque" { continue; }
                 write!(&mut swap_decl, "self.{}.bswap();\n", name).unwrap();

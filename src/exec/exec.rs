@@ -306,17 +306,17 @@ pub trait Exec : 'static {
     fn get_exec_base(&self) -> &ExecBase;
 
     // Todo: add a monomorphizable iterator version of this
-    fn get_symbol_list(&self, _source: SymbolSource, specific: Option<&Any>) -> Vec<Symbol> {
+    fn get_symbol_list(&self, _source: SymbolSource, specific: Option<& dyn Any>) -> Vec<Symbol> {
         assert!(specific.is_none());
         vec!()
     }
 
-    fn lookup_export(&self, _name: &ByteStr, specific: Option<&Any>) -> Vec<Symbol> {
+    fn lookup_export(&self, _name: &ByteStr, specific: Option<& dyn Any>) -> Vec<Symbol> {
         assert!(specific.is_none());
         vec!()
     }
 
-    fn get_reloc_list<'a>(&'a self, specific: Option<&'a Any>) -> Vec<Reloc<'a>> {
+    fn get_reloc_list<'a>(&'a self, specific: Option<&'a dyn Any>) -> Vec<Reloc<'a>> {
         assert!(specific.is_none());
         vec!()
     }
@@ -329,9 +329,9 @@ pub trait Exec : 'static {
         panic!("describe_dep_lib must be implemented if get_dep_libs is")
     }
 
-    fn as_any(&self) -> &std::any::Any;// { self as &std::any::Any }
+    fn as_any(&self) -> &dyn std::any::Any;// { self as &std::any::Any }
     #[allow(mutable_transmutes)]
-    fn as_any_mut(&mut self) -> &mut std::any::Any { unsafe { transmute(self.as_any()) } }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { unsafe { transmute(self.as_any()) } }
 }
 
 // Prober:
@@ -340,10 +340,10 @@ pub trait ExecProber {
     fn name(&self) -> &str;
     fn probe(&self, eps: &Vec<ExecProberRef>, buf: Mem<u8>) -> Vec<ProbeResult>;
     // May fail.
-    fn create(&self, eps: &Vec<ExecProberRef>, buf: Mem<u8>, args: Vec<String>) -> ExecResult<(Box<Exec>, Vec<String>)>;
+    fn create(&self, eps: &Vec<ExecProberRef>, buf: Mem<u8>, args: Vec<String>) -> ExecResult<(Box<dyn Exec>, Vec<String>)>;
 }
 
-pub type ExecProberRef = &'static (ExecProber+'static);
+pub type ExecProberRef = &'static (dyn ExecProber+'static);
 
 pub struct ProbeResult {
     pub desc: String,
@@ -360,7 +360,7 @@ pub fn probe_all(eps: &Vec<ExecProberRef>, buf: Mem<u8>) -> Vec<ProbeResult> {
     result
 }
 
-pub fn create(eps: &Vec<ExecProberRef>, buf: Mem<u8>, mut args: Vec<String>) -> ExecResult<(Box<Exec+'static>, Vec<String>)> {
+pub fn create(eps: &Vec<ExecProberRef>, buf: Mem<u8>, mut args: Vec<String>) -> ExecResult<(Box<dyn Exec+'static>, Vec<String>)> {
     if args.len() == 0 {
         return err(ErrorKind::InvalidArgs, "empty argument list passed to exec::create");
     }
@@ -376,27 +376,27 @@ pub fn create(eps: &Vec<ExecProberRef>, buf: Mem<u8>, mut args: Vec<String>) -> 
     err(ErrorKind::InvalidArgs, format!("no format named {}", prober_name))
 }
 
-fn create_auto(eps: &Vec<ExecProberRef>, buf: Mem<u8>, args: Vec<String>) -> ExecResult<(Box<Exec+'static>, Vec<String>)> {
+fn create_auto(eps: &Vec<ExecProberRef>, buf: Mem<u8>, args: Vec<String>) -> ExecResult<(Box<dyn Exec+'static>, Vec<String>)> {
     // TODO: error conversion
-    let m = try!(usage_to_invalid_args(util::do_getopts_or_usage(&*args, "auto [--arch arch]", 0, std::usize::MAX, &mut vec![
+    let m = usage_to_invalid_args(util::do_getopts_or_usage(&*args, "auto [--arch arch]", 0, std::usize::MAX, &mut vec![
         getopts::optopt("", "arch", "Architecture bias", "arch"),
-    ])));
+    ]))?;
     let mut results = probe_all(eps, buf.clone());
     if let Some(arch_str) = m.opt_str("arch") {
         let arch: Arch = FromStr::from_str(&*arch_str).unwrap();
         for pr in results.iter_mut() {
             if pr.likely && pr.arch == arch {
-                return Ok((try!(create(eps, buf, replace(&mut pr.cmd, vec!()))).0, m.free))
+                return Ok((create(eps, buf, replace(&mut pr.cmd, vec!()))?.0, m.free))
             }
         }
     }
     for pr in results.iter_mut() {
         if pr.likely {
-            return Ok((try!(create(eps, buf, replace(&mut pr.cmd, vec!()))).0, m.free))
+            return Ok((create(eps, buf, replace(&mut pr.cmd, vec!()))?.0, m.free))
         }
     }
     for pr in results.iter_mut() {
-        return Ok((try!(create(eps, buf, replace(&mut pr.cmd, vec!()))).0, m.free))
+        return Ok((create(eps, buf, replace(&mut pr.cmd, vec!()))?.0, m.free))
     }
     panic!("create_auto: no formats, not even raw_binary??");
 
@@ -567,7 +567,7 @@ impl ExecBase {
     }
 }
 
-pub fn read_cstr<'a>(reader: &ReadVMA, offset: VMA) -> Option<ByteString> {
+pub fn read_cstr<'a>(reader: &dyn ReadVMA, offset: VMA) -> Option<ByteString> {
     let mut size = 32;
     loop {
         let res = reader.read(offset, size);

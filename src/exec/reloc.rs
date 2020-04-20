@@ -20,9 +20,11 @@ pub struct RelocContext {
     pub endian: Endian,
 }
 
+/* unused
 macro_rules! try_opt { ($x:expr) => {
     if let Some(x) = $x { x } else { return None }
 } }
+*/
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum RelocPackFail {
@@ -56,7 +58,7 @@ impl RelocContext {
                 if data.len() < 4 { return Err(RelocPackFail::Truncated); }
                 let old: u32 = util::copy_from_slice(&data[..4], self.endian);
                 if let Some(VMA(new)) = new {
-                    let new: u32 = try!(new.narrow().ok_or(RelocPackFail::AddrOutOfRange));
+                    let new: u32 = new.narrow().ok_or(RelocPackFail::AddrOutOfRange)?;
                     util::copy_to_slice(&data[..4], &new, self.endian);
                 }
                 Ok(VMA(old.ext()))
@@ -72,7 +74,7 @@ impl RelocContext {
                     let rel = new.wrapping_sub(self.base_addr);
                     let base = old_word & !0x3ffffff;
                     if rel & 3 != 0 { return Err(RelocPackFail::AddrOutOfRange); }
-                    let x: u32 = try!(rel.un_sign_extend(28).ok_or(RelocPackFail::AddrOutOfRange));
+                    let x: u32 = rel.un_sign_extend(28).ok_or(RelocPackFail::AddrOutOfRange)?;
                     let word = x >> 2 | base;
                     util::copy_to_slice(&data[..4], &word, self.endian);
                 }

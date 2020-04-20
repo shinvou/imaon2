@@ -3,9 +3,9 @@
 macro_rules! branch {
     (if ($cond:expr) { $($a:stmt)* } else { $($b:stmt)* } then $c:expr) => (
         if $cond {
-            $($a);*; $c
+            $($a)*; $c
         } else {
-            $($b);*; $c
+            $($b)*; $c
         }
     )
 }
