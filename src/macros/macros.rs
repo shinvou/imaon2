@@ -1,6 +1,3 @@
-#[macro_use] extern crate lazy_static;
-
-
 // TODO bug report?
 #[macro_export]
 macro_rules! branch {
