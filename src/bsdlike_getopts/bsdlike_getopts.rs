@@ -255,7 +255,7 @@ impl OptGroup {
             (0, 0) => panic!("this long-format option was given no name"),
             (0, _) => {
                 Opt {
-                    name: Long((long_name)),
+                    name: Long(long_name),
                     hasarg: hasarg,
                     occur: occur,
                     aliases: Vec::new(),
@@ -271,7 +271,7 @@ impl OptGroup {
             }
             (1, _) => {
                 Opt {
-                    name: Long((long_name)),
+                    name: Long(long_name),
                     hasarg: hasarg,
                     occur: occur,
                     aliases: vec![Opt {
