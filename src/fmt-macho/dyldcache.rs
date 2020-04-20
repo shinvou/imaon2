@@ -388,7 +388,8 @@ impl DyldCache {
             let padded_arch = &top[7..16];
             let (arch, is64) = if padded_arch == b"    i386\0" {
                 (arch::X86, false)
-            } else if padded_arch == b"  x86_64\0" {
+            } else if padded_arch == b"  x86_64\0" ||
+                      padded_arch == b" x86_64h\0" {
                 (arch::X86_64, true)
             } else if padded_arch == b"   armv7\0" ||
                       padded_arch == b"   armv6\0" ||
