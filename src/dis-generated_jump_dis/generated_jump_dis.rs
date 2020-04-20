@@ -129,7 +129,7 @@ impl aarch64::Handler for AArch64Handler {
         self.info.kills_reg[0] = reg(Rd);
     }
     #[inline]
-    fn Rd_out_170_ADCSWr(&mut self, Rd: u32) -> Self::Res {
+    fn Rd_out_190_ADCSWr(&mut self, Rd: u32) -> Self::Res {
         self.info.kills_reg[0] = reg(Rd);
     }
     #[inline]
@@ -211,7 +211,7 @@ impl aarch64::Handler for AArch64Handler {
         self.info.kills_reg[2] = reg(Rn);
     }
     #[inline]
-    fn Rn_Rt_out_wback_out_skipped_18_LDRBBpost(&mut self, Rt: u32, Rn: u32) -> Self::Res {
+    fn Rn_Rt_out_wback_out_skipped_20_LDRAAwriteback(&mut self, Rt: u32, Rn: u32) -> Self::Res {
         self.info.kills_reg[0] = reg(Rt);
         self.info.kills_reg[1] = reg(Rn);
     }
@@ -220,7 +220,7 @@ impl aarch64::Handler for AArch64Handler {
         self.info.kills_reg[0] = reg(Rn);
     }
     #[inline]
-    fn Rs_out_out_skipped_16_CASALb(&mut self, Rs: u32) -> Self::Res {
+    fn Rs_out_out_skipped_16_CASAB(&mut self, Rs: u32) -> Self::Res {
         self.info.kills_reg[0] = reg(Rs);
     }
     #[inline]
@@ -229,7 +229,7 @@ impl aarch64::Handler for AArch64Handler {
         self.info.kills_reg[1] = reg(Rt2);
     }
     #[inline]
-    fn Rt_out_188_LDADDALb(&mut self, Rt: u32) -> Self::Res {
+    fn Rt_out_194_LDADDAB(&mut self, Rt: u32) -> Self::Res {
         self.info.kills_reg[0] = reg(Rt);
     }
     #[inline]
@@ -271,7 +271,7 @@ impl aarch64::Handler for AArch64Handler {
         self.info.target_addr = TargetAddr::Code(self.addr.wrapping_add((target << 2).sign_extend(21)));
     }
     #[inline]
-    fn branchy_skipped_3_DRPS(&mut self) -> Self::Res {
+    fn branchy_skipped_7_DRPS(&mut self) -> Self::Res {
         self.info.kind = InsnKind::Tail;
     }
     #[inline]
@@ -295,7 +295,7 @@ impl aarch64::Handler for AArch64Handler {
         self.info.kind = InsnKind::Unidentified;
     }
     #[inline]
-    fn uninteresting_2025_ABSv16i8(&mut self) -> Self::Res {
+    fn uninteresting_2091_ABSv16i8(&mut self) -> Self::Res {
     }
 }
 
