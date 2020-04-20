@@ -808,7 +808,7 @@ impl MachODscExtraction for MachO {
                 let mo = some_or!(ice.mo.as_ref().ok(), { continue; });
                 let new = (|| {
                     let cur_name = if let Some(ref name) = cur_name_owned { &name[..] } else { orig_name };
-                    for export in mo.lookup_export(cur_name, Some(&opts as &Any)) {
+                    for export in mo.lookup_export(cur_name, Some(&opts as &dyn Any)) {
                         if let SymbolValue::ReExport(n, source_dylib) = export.val {
                             // it's owned to start with so
                             let source_dylib = match source_dylib {
@@ -928,7 +928,7 @@ fn ice_get_addr_syms(this: &ImageCacheEntry) -> &Vec<exec::Symbol<'static>> {
             SymbolValue::Addr(vma) => vma,
             _ => panic!()
         });
-        Box::new(list) as Box<Any+Send>
+        Box::new(list) as Box<dyn Any+Send>
     });
     any.downcast_ref().unwrap()
 }
@@ -1022,7 +1022,7 @@ pub fn extract_as_necessary(mo: &mut MachO, dc: Option<&DyldCache>, image_cache:
         let x: Option<DyldCache>;
         let dc = if let Some(dc) = dc { dc } else {
             let inner_sections = true; // xxx
-            x = Some(try!(DyldCache::new(mo.eb.whole_buf.as_ref().unwrap().clone(), inner_sections, /*unslide*/ false)));
+            x = Some(DyldCache::new(mo.eb.whole_buf.as_ref().unwrap().clone(), inner_sections, /*unslide*/ false)?);
             x.as_ref().unwrap()
         };
         // we're in a cache...
@@ -1042,7 +1042,7 @@ pub fn extract_as_necessary(mo: &mut MachO, dc: Option<&DyldCache>, image_cache:
         mo.fix_objc_from_cache(dc);
         mo.check_no_other_lib_refs(dc);
     }
-    try!(mo.reallocate());
+    mo.reallocate()?;
     mo.rewhole();
     Ok(())
 }

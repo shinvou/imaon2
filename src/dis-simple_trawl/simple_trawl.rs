@@ -112,7 +112,7 @@ impl<'a> CodeMap<'a> {
             value_info_cache: util::new_fnv_hashmap(),
         }
     }
-    pub fn go<'x>(&mut self, handler: &mut GenericHandler, read: &'x mut FnMut(VMA, u64) -> Option<&'x [ReadCell<u8>]>) {
+    pub fn go<'x>(&mut self, handler: &mut dyn GenericHandler, read: &'x mut dyn FnMut(VMA, u64) -> Option<&'x [ReadCell<u8>]>) {
         while !self.todo.is_empty() {
             self.go_round(handler);
             let idxs = replace(&mut self.switchlike_br_idxs, Vec::new());
@@ -202,7 +202,7 @@ impl<'a> CodeMap<'a> {
         self.todo.push_back(idx);
         //println!("mark_root {}/{}", idx, self.idx_to_addr(idx));
     }
-    fn go_round(&mut self, handler: &mut GenericHandler) {
+    fn go_round(&mut self, handler: &mut dyn GenericHandler) {
         let grain_shift = self.grain_shift;
         let segs = self.segs;
         while let Some(start_idx) = self.todo.pop_front() {
@@ -263,7 +263,7 @@ impl<'a> CodeMap<'a> {
         }
     }
     #[inline(always)]
-    fn decode(&self, handler: &mut GenericHandler, idx: InsnIdx) -> (usize, InsnInfo) {
+    fn decode(&self, handler: &mut dyn GenericHandler, idx: InsnIdx) -> (usize, InsnInfo) {
         let offset = idx << self.grain_shift;
         let data = &self.insn_data[offset..];
         let addr = self.region_start + (offset as u64);
@@ -271,19 +271,19 @@ impl<'a> CodeMap<'a> {
         (size, *info)
     }
 
-    fn grok_switch<'x>(&mut self, handler: &mut GenericHandler, br_idx: InsnIdx, read: &mut FnMut(VMA, u64) -> Option<&'x [ReadCell<u8>]>) -> Result<(), GrokSwitchFail> {
+    fn grok_switch<'x>(&mut self, handler: &mut dyn GenericHandler, br_idx: InsnIdx, read: &mut dyn FnMut(VMA, u64) -> Option<&'x [ReadCell<u8>]>) -> Result<(), GrokSwitchFail> {
         //println!("grok_switch: {}", self.idx_to_addr(br_idx));
         let br_reg = match self.decode(handler, br_idx).1.kind {
             InsnKind::Br(r) => r, _ => panic!(),
         };
-        let addr_setter_vi = try!(self.value_info(handler, br_idx, br_reg).map_err(GrokSwitchFail::GettingBrAddrValueInfo));
-        let addr_setter_idx = try!(addr_setter_vi.setter_idx.ok_or(GrokSwitchFail::GettingBrAddrSetter));
+        let addr_setter_vi = self.value_info(handler, br_idx, br_reg).map_err(GrokSwitchFail::GettingBrAddrValueInfo)?;
+        let addr_setter_idx = addr_setter_vi.setter_idx.ok_or(GrokSwitchFail::GettingBrAddrSetter)?;
         let (r1, r2) = match self.decode(handler, addr_setter_idx).1.kind {
             InsnKind::Set(_, Addrish::AddReg(r1, r2, 0)) => (r1, r2), _ => panic!(),
         };
         let (r1vi, r2vi) = (
-            try!(self.value_info(handler, addr_setter_idx, r1).map_err(GrokSwitchFail::GettingR1ValueInfo)),
-            try!(self.value_info(handler, addr_setter_idx, r2).map_err(GrokSwitchFail::GettingR2ValueInfo)),
+            self.value_info(handler, addr_setter_idx, r1).map_err(GrokSwitchFail::GettingR1ValueInfo)?,
+            self.value_info(handler, addr_setter_idx, r2).map_err(GrokSwitchFail::GettingR2ValueInfo)?,
         );
         //println!("addends: {}, {} [from {}]", self.idx_to_addr(r1idx), self.idx_to_addr(r2idx), self.idx_to_addr(addr_setter_idx));
         let rs = &[(r1, r1vi), (r2, r2vi)];
@@ -312,9 +312,9 @@ impl<'a> CodeMap<'a> {
         }
         // the other should just be a static offset from PC
         let (_, ref table_abase_vi) = rs[1 - which_is_load];
-        let table_abase = VMA(try!(table_abase_vi.value.ok_or(GrokSwitchFail::GettingTableAbaseValue)));
-        let table_addr_vi = try!(self.value_info(handler, load_idx, table_addr_reg).map_err(GrokSwitchFail::GettingTableAddrValueInfo));
-        let table_addr = VMA(try!(table_addr_vi.value.ok_or(GrokSwitchFail::GettingTableAddrValue)));
+        let table_abase = VMA(table_abase_vi.value.ok_or(GrokSwitchFail::GettingTableAbaseValue)?);
+        let table_addr_vi = self.value_info(handler, load_idx, table_addr_reg).map_err(GrokSwitchFail::GettingTableAddrValueInfo)?;
+        let table_addr = VMA(table_addr_vi.value.ok_or(GrokSwitchFail::GettingTableAddrValue)?);
 
         // one more thing: find the cmp to establish table size
         let mut table_len: u64 = 0;
@@ -387,13 +387,13 @@ impl<'a> CodeMap<'a> {
     }
 
     #[inline]
-    fn value_info(&mut self, handler: &mut GenericHandler, before_idx: InsnIdx, reg: Reg) -> Result<ValueInfo, ValueInfoFail> {
+    fn value_info(&mut self, handler: &mut dyn GenericHandler, before_idx: InsnIdx, reg: Reg) -> Result<ValueInfo, ValueInfoFail> {
         //println!("value_info({:?} before {})", reg, self.idx_to_addr(before_idx));
         self.value_info_inner(handler, before_idx, false, reg, 0)
     }
 
     #[inline]
-    fn value_info_rec(&mut self, handler: &mut GenericHandler, at_or_before_idx: InsnIdx, reg: Reg, depth: usize) -> Result<ValueInfo, ValueInfoFail> {
+    fn value_info_rec(&mut self, handler: &mut dyn GenericHandler, at_or_before_idx: InsnIdx, reg: Reg, depth: usize) -> Result<ValueInfo, ValueInfoFail> {
         //println!("value_info_rec: {:?} @ {}/{}", reg, at_or_before_idx, self.idx_to_addr(at_or_before_idx));
         if depth > 40 {
             return Err(ValueInfoFail::StackOverflow);
@@ -412,12 +412,12 @@ impl<'a> CodeMap<'a> {
                 slot.insert(None);
             }
         }
-        let res = try!(self.value_info_inner(handler, at_or_before_idx, /*can_be_at*/ true, reg, depth));
+        let res = self.value_info_inner(handler, at_or_before_idx, /*can_be_at*/ true, reg, depth)?;
         *self.value_info_cache.get_mut(&key).unwrap() = Some(res);
         Ok(res)
     }
 
-    fn value_info_inner(&mut self, handler: &mut GenericHandler, at_or_before_idx: InsnIdx, can_be_at: bool, mut reg: Reg, depth: usize) -> Result<ValueInfo, ValueInfoFail> {
+    fn value_info_inner(&mut self, handler: &mut dyn GenericHandler, at_or_before_idx: InsnIdx, can_be_at: bool, mut reg: Reg, depth: usize) -> Result<ValueInfo, ValueInfoFail> {
         let mut idx = at_or_before_idx;
         let mut addend: u64 = 0;
         loop {
@@ -464,7 +464,7 @@ impl<'a> CodeMap<'a> {
                         continue;
                     }
                     // but other failures are fatal
-                    let res = try!(res);
+                    let res = res?;
                     if let Some(ref mut existing) = existing {
                         //println!("existing={:?} res={:?}", existing, res);
                         if existing.setter_idx != res.setter_idx { existing.setter_idx = None; }
